@@ -28,7 +28,7 @@ import {
   type ApiTransaction,
   type Category,
   type TransactionType,
-} from "@/services/transactions.service";
+} from "@/features/transactions/services/transactions.service";
 
 const PAGE_SIZE = 10;
 

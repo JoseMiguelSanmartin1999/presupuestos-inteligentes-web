@@ -13,7 +13,7 @@ import {
   getCategories,
   type Category,
   type TransactionType,
-} from "@/services/transactions.service";
+} from "@/features/transactions/services/transactions.service";
 
 interface TransactionFormProps {
   onCreated: () => void;

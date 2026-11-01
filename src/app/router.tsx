@@ -1,54 +1,58 @@
-
 import { Navigate, Route, Routes } from "react-router";
 
 import { ProtectedRoute } from "@/features/auth/components/protected-route";
+import { LoginPage } from "@/features/auth/pages/login-page";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 
-function PendingPage({ title }: { title: string }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h1 className="text-2xl font-bold text-slate-900">
-        {title}
-      </h1>
-
-      <p className="mt-2 text-sm text-slate-500">
-        Esta sección está pendiente de migración.
-      </p>
-    </section>
-  );
-}
+import { DashboardPage } from "@/features/dashboard/pages/dashboard-page";
+import { TransactionsPage } from "@/features/transactions/pages/transactions-page";
+import { BudgetsPage } from "@/features/budgets/pages/budgets-page";
+import { CategoriesPage } from "@/features/categories/pages/categories-page";
+import { ReportsPage } from "@/features/reports/pages/reports-page";
 
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
           <Route
-            path="/dashboard"
-            element={<PendingPage title="Dashboard" />}
+            index
+            element={<Navigate to="/dashboard" replace />}
           />
+
           <Route
-            path="/transactions"
-            element={<PendingPage title="Transacciones" />}
+            path="dashboard"
+            element={<DashboardPage />}
           />
+
           <Route
-            path="/budgets"
-            element={<PendingPage title="Presupuestos" />}
+            path="transactions"
+            element={<TransactionsPage />}
           />
+
           <Route
-            path="/categories"
-            element={<PendingPage title="Categorías" />}
+            path="budgets"
+            element={<BudgetsPage />}
           />
+
           <Route
-            path="/reports"
-            element={<PendingPage title="Informes" />}
+            path="categories"
+            element={<CategoriesPage />}
+          />
+
+          <Route
+            path="reports"
+            element={<ReportsPage />}
           />
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="*"
+        element={<Navigate to="/dashboard" replace />}
+      />
     </Routes>
   );
 }
