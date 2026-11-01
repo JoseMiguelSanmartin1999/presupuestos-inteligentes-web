@@ -73,12 +73,13 @@ export function DashboardLayout() {
   }, [refreshKey]);
 
   const context: DashboardContext = {
-    data,
-    loading,
-    error,
-    refreshDashboard,
-    openTransactionModal: () => setTransactionModalOpen(true),
-  };
+  data,
+  loading,
+  error,
+  refreshKey,
+  refreshDashboard,
+  openTransactionModal: () => setTransactionModalOpen(true),
+};
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">

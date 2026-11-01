@@ -7,8 +7,11 @@ import { TransactionHistory } from "../components/transaction-history";
 import type { DashboardContext } from "@/components/layout/dashboard-context";
 
 export function TransactionsPage() {
-  const { openTransactionModal, refreshDashboard } =
-  useOutletContext<DashboardContext>();
+  const {
+  openTransactionModal,
+  refreshDashboard,
+  refreshKey,
+} = useOutletContext<DashboardContext>();
 
   return (
     <div className="space-y-6">
@@ -33,7 +36,8 @@ export function TransactionsPage() {
       </div>
 
       <TransactionHistory
-      onTransactionsChanged={refreshDashboard}
+        refreshKey={refreshKey}
+        onTransactionsChanged={refreshDashboard}
       />
     </div>
   );

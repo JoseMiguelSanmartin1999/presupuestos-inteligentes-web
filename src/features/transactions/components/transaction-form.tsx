@@ -1,18 +1,13 @@
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { LoaderCircle, PlusCircle, X } from "lucide-react";
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  LoaderCircle,
-  PlusCircle,
-  X,
-} from "lucide-react";
-
+  TransactionFields,
+  type TransactionFieldsValue,
+} from "./transaction-fields";
 import {
   createTransaction,
   getCategories,
   type Category,
-  type TransactionType,
 } from "@/features/transactions/services/transactions.service";
 
 interface TransactionFormProps {
@@ -33,11 +28,15 @@ export function TransactionForm({
   onCreated,
   onClose,
 }: TransactionFormProps) {
-  const [type, setType] = useState<TransactionType>("EXPENSE");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(getToday());
-  const [categoryId, setCategoryId] = useState("");
+  const [fields, setFields] = useState<TransactionFieldsValue>(() => ({
+    type: "EXPENSE",
+    amount: "",
+    description: "",
+    date: getToday(),
+    categoryId: "",
+  }));
+
+  const { type, amount, description, date, categoryId } = fields;
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -78,17 +77,6 @@ export function TransactionForm({
     };
   }, []);
 
-  const availableCategories = useMemo(
-    () => categories.filter((category) => category.type === type),
-    [categories, type],
-  );
-
-  useEffect(() => {
-    if (!availableCategories.some((category) => category.id === categoryId)) {
-      setCategoryId(availableCategories[0]?.id ?? "");
-    }
-  }, [availableCategories, categoryId]);
-
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !submitting) {
@@ -124,7 +112,13 @@ export function TransactionForm({
       return;
     }
 
-    if (!categoryId) {
+    if (
+      !categories.some(
+        (category) =>
+          category.id === categoryId &&
+          category.type === type,
+      )
+    ) {
       setError("Selecciona una categoría válida para este movimiento.");
       return;
     }
@@ -199,148 +193,16 @@ export function TransactionForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Tipo de movimiento
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                aria-pressed={type === "EXPENSE"}
-                onClick={() => {
-                  setType("EXPENSE");
-                  setError(null);
-                }}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${
-                  type === "EXPENSE"
-                    ? "border-orange-300 bg-orange-50 text-orange-700"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <ArrowUpRight size={18} />
-                Gasto
-              </button>
-
-              <button
-                type="button"
-                aria-pressed={type === "INCOME"}
-                onClick={() => {
-                  setType("INCOME");
-                  setError(null);
-                }}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${
-                  type === "INCOME"
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <ArrowDownLeft size={18} />
-                Ingreso
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="transaction-amount"
-                className="mb-1.5 block text-sm font-medium text-slate-700"
-              >
-                Monto (USD)
-              </label>
-              <input
-                id="transaction-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="Ej. 45.50"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="transaction-date"
-                className="mb-1.5 block text-sm font-medium text-slate-700"
-              >
-                Fecha
-              </label>
-              <input
-                id="transaction-date"
-                type="date"
-                required
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor="transaction-description"
-              className="mb-1.5 block text-sm font-medium text-slate-700"
-            >
-              Descripción
-            </label>
-            <input
-              id="transaction-description"
-              type="text"
-              required
-              maxLength={200}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder={
-                type === "EXPENSE"
-                  ? "Ej. Almuerzo con compañeros"
-                  : "Ej. Salario mensual"
-              }
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="transaction-category"
-              className="mb-1.5 block text-sm font-medium text-slate-700"
-            >
-              Categoría
-            </label>
-            <select
-              id="transaction-category"
-              required
-              value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-              disabled={loadingCategories || availableCategories.length === 0}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50"
-            >
-              <option value="">
-                {loadingCategories
-                  ? "Cargando categorías..."
-                  : availableCategories.length === 0
-                    ? `No hay categorías de ${
-                        type === "EXPENSE" ? "gastos" : "ingresos"
-                      }`
-                    : "Selecciona una categoría"}
-              </option>
-
-              {availableCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-
-            {!loadingCategories && availableCategories.length === 0 && (
-              <p className="mt-1.5 text-xs text-amber-700">
-                Primero crea una categoría de este tipo en Gestión de categorías.
-              </p>
-            )}
-          </div>
+          <TransactionFields
+            value={fields}
+            onChange={(nextFields) => {
+              setFields(nextFields);
+              setError(null);
+            }}
+            categories={categories}
+            loadingCategories={loadingCategories}
+            disabled={submitting}
+          />
 
           {error && (
             <div
@@ -366,8 +228,11 @@ export function TransactionForm({
               disabled={
                 submitting ||
                 loadingCategories ||
-                !categoryId ||
-                availableCategories.length === 0
+                !categories.some(
+                  (category) =>
+                    category.id === categoryId &&
+                    category.type === type,
+                )
               }
               className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >

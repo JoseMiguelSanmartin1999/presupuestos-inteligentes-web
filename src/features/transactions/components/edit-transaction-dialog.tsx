@@ -1,7 +1,10 @@
-
 import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, Pencil } from "lucide-react";
 
+import {
+  TransactionFields,
+  type TransactionFieldsValue,
+} from "./transaction-fields";
 import {
   getCategories,
   updateTransaction,
@@ -10,7 +13,6 @@ import {
 import type {
   ApiTransaction,
   Category,
-  TransactionType,
   UpdateTransactionDto,
 } from "../types/transaction.types";
 
@@ -20,26 +22,20 @@ interface EditTransactionDialogProps {
   onUpdated: () => void;
 }
 
-function getDateInputValue(value: string): string {
-  return value.slice(0, 10);
-}
-
 export function EditTransactionDialog({
   transaction,
   onClose,
   onUpdated,
 }: EditTransactionDialogProps) {
-  const [type, setType] = useState<TransactionType>(transaction.type);
-  const [amount, setAmount] = useState(String(transaction.amount));
-  const [description, setDescription] = useState(
-    transaction.description ?? "",
-  );
-  const [date, setDate] = useState(
-    getDateInputValue(transaction.date),
-  );
-  const [categoryId, setCategoryId] = useState(
-    transaction.categoryId ?? "",
-  );
+  const [fields, setFields] = useState<TransactionFieldsValue>(() => ({
+    type: transaction.type,
+    amount: String(transaction.amount),
+    description: transaction.description ?? "",
+    date: transaction.date.slice(0, 10),
+    categoryId: transaction.categoryId ?? "",
+  }));
+
+  const { type, amount, description, date, categoryId } = fields;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -78,12 +74,10 @@ export function EditTransactionDialog({
     };
   }, []);
 
-  const availableCategories = categories.filter(
-    (category) => category.type === type,
-  );
-
-  const validCategory = availableCategories.some(
-    (category) => category.id === categoryId,
+  const validCategory = categories.some(
+    (category) =>
+      category.id === categoryId &&
+      category.type === type,
   );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -160,93 +154,25 @@ export function EditTransactionDialog({
         </div>
 
         <form onSubmit={(event) => void handleSubmit(event)}>
-          <div className="space-y-4">
-            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-              Tipo de transacción
-              <select
-                value={type}
-                disabled={saving}
-                onChange={(event) => {
-                  setType(event.target.value as TransactionType);
-                  setCategoryId("");
-                }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-              >
-                <option value="INCOME">Ingreso</option>
-                <option value="EXPENSE">Gasto</option>
-              </select>
-            </label>
+          <TransactionFields
+            value={fields}
+            onChange={(nextFields) => {
+              setFields(nextFields);
+              setError(null);
+            }}
+            categories={categories}
+            loadingCategories={loadingCategories}
+            disabled={saving}
+          />
 
-            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-              Importe
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={amount}
-                disabled={saving}
-                onChange={(event) => setAmount(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5"
-              />
-            </label>
-
-            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-              Descripción
-              <input
-                type="text"
-                value={description}
-                disabled={saving}
-                onChange={(event) => setDescription(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5"
-                placeholder="Descripción del movimiento"
-              />
-            </label>
-
-            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-              Fecha
-              <input
-                type="date"
-                required
-                value={date}
-                disabled={saving}
-                onChange={(event) => setDate(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5"
-              />
-            </label>
-
-            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-              Categoría
-              <select
-                value={validCategory ? categoryId : ""}
-                required
-                disabled={saving || loadingCategories}
-                onChange={(event) => setCategoryId(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-              >
-                <option value="">
-                  {loadingCategories
-                    ? "Cargando categorías..."
-                    : "Selecciona una categoría"}
-                </option>
-
-                {availableCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {error && (
-              <p
-                role="alert"
-                className="rounded-lg bg-red-50 p-3 text-sm text-red-700"
-              >
-                {error}
-              </p>
-            )}
-          </div>
+          {error && (
+            <p
+              role="alert"
+              className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+            >
+              {error}
+            </p>
+          )}
 
           <div className="mt-6 flex justify-end gap-3">
             <button
