@@ -10,58 +10,46 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type DashboardSection =
-  | "dashboard"
-  | "transactions"
-  | "budgets"
-  | "categories"
-  | "reports";
-
-export interface DashboardSidebarProps {
-  activeSection: DashboardSection;
-  onNavigate: (section: DashboardSection) => void;
-}
+import { NavLink } from "react-router";
 
 interface NavigationItem {
   label: string;
-  section: DashboardSection;
+  path: string;
   icon: LucideIcon;
 }
 
 const navigation: NavigationItem[] = [
   {
     label: "Dashboard",
-    section: "dashboard",
+    path: "/dashboard",
     icon: LayoutDashboard,
   },
   {
     label: "Transacciones",
-    section: "transactions",
+    path: "/transactions",
     icon: ArrowLeftRight,
   },
   {
     label: "Presupuestos",
-    section: "budgets",
+    path: "/budgets",
     icon: Wallet,
   },
   {
     label: "Categorías",
-    section: "categories",
+    path: "/categories",
     icon: Tags,
   },
   {
     label: "Informes",
-    section: "reports",
+    path: "/reports",
     icon: ChartNoAxesCombined,
   },
 ];
 
-export function DashboardSidebar({
-  activeSection,
-  onNavigate,
-}: DashboardSidebarProps) {
+export function DashboardSidebar() {
   return (
     <aside className="flex h-full flex-col border-r border-slate-200 bg-white">
+      {/* Identidad de la aplicación */}
       <div className="flex h-[76px] items-center gap-3 border-b border-slate-100 px-6">
         <div className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200">
           <Wallet size={21} />
@@ -71,40 +59,38 @@ export function DashboardSidebar({
           <p className="font-bold tracking-tight text-slate-900">
             Presupuestos
           </p>
+
           <p className="text-xs text-slate-500">
             Inteligentes
           </p>
         </div>
       </div>
 
+      {/* Navegación */}
       <nav
         className="flex-1 space-y-1 px-3 py-6"
-        aria-label="Navegación lateral"
+        aria-label="Navegación principal"
       >
         <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
           Menú principal
         </p>
 
-        {navigation.map(({ label, section, icon: Icon }) => {
-          const isActive = activeSection === section;
-
-          return (
-            <button
-              key={section}
-              type="button"
-              onClick={() => onNavigate(section)}
-              aria-current={isActive ? "page" : undefined}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+        {navigation.map(({ label, path, icon: Icon }) => (
+          <NavLink
+            key={path}
+            to={path}
+            className={({ isActive }) =>
+              `flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <Icon size={19} />
-              {label}
-            </button>
-          );
-        })}
+              }`
+            }
+          >
+            <Icon size={19} />
+            {label}
+          </NavLink>
+        ))}
 
         <p className="mb-3 mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
           Preferencias
@@ -119,6 +105,7 @@ export function DashboardSidebar({
         </div>
       </nav>
 
+      {/* Información */}
       <div className="m-4 rounded-2xl bg-slate-50 p-4">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
           <CreditCard
@@ -135,4 +122,3 @@ export function DashboardSidebar({
     </aside>
   );
 }
-

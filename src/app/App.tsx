@@ -18,10 +18,7 @@
   import { BudgetProgress } from "@/components/dashboard/budget-progress";
   import { CategoryManagement } from "@/components/dashboard/category-management";
   import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-  import {
-  DashboardSidebar,
-  type DashboardSection,
-} from "@/components/dashboard/dashboard-sidebar";
+  import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
   import { MetricCard } from "@/components/dashboard/metric-card";
   import { RecentTransactions } from "@/components/dashboard/recent-transactions";
   import { SpendingChart } from "@/components/dashboard/spending-chart";
@@ -39,7 +36,12 @@
   } from "@/services/auth.service";
 
   import type { DashboardData } from "@/types/dashboard";
-  type Section = DashboardSection;
+  type Section =
+  | "dashboard"
+  | "transactions"
+  | "budgets"
+  | "categories"
+  | "reports";
   const currency = (value: number) =>
     new Intl.NumberFormat("es-EC", {
       style: "currency",
@@ -157,10 +159,7 @@
         <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
           {/* Barra lateral existente en escritorio */}
           <div className="hidden lg:block">
-            <DashboardSidebar
-              activeSection={activeSection}
-              onNavigate={navigateTo}
-            />
+            <DashboardSidebar />
           </div>
 
           {/* Contenido principal */}
