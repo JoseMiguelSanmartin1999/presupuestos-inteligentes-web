@@ -1,10 +1,20 @@
+
 import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, Pencil } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import {
   TransactionFields,
   type TransactionFieldsValue,
 } from "./transaction-fields";
+
 import {
   getCategories,
   updateTransaction,
@@ -92,13 +102,20 @@ export function EditTransactionDialog({
       return;
     }
 
+    if (!description.trim()) {
+      setError("Ingresa una descripción para el movimiento.");
+      return;
+    }
+
     if (!date) {
       setError("Selecciona una fecha.");
       return;
     }
 
     if (!validCategory) {
-      setError("Selecciona una categoría válida para el tipo elegido.");
+      setError(
+        "Selecciona una categoría válida para el tipo elegido.",
+      );
       return;
     }
 
@@ -128,32 +145,46 @@ export function EditTransactionDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-transaction-title"
-        className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        showCloseButton={!saving}
+        className="max-h-[90vh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-lg"
+        onEscapeKeyDown={(event) => {
+          if (saving) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (saving) event.preventDefault();
+        }}
       >
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-            <Pencil size={21} />
-          </div>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <Pencil size={21} />
+            </div>
 
-          <div>
-            <h2
-              id="edit-transaction-title"
-              className="text-xl font-bold text-slate-900"
-            >
-              Editar transacción
-            </h2>
-            <p className="text-sm text-slate-500">
-              Modifica los datos del movimiento.
-            </p>
-          </div>
-        </div>
+            <div>
+              <DialogTitle className="text-xl">
+                Editar transacción
+              </DialogTitle>
 
-        <form onSubmit={(event) => void handleSubmit(event)}>
+              <DialogDescription className="mt-1">
+                Modifica los datos del movimiento.
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form
+          onSubmit={(event) => void handleSubmit(event)}
+          className="mt-4 space-y-4"
+        >
           <TransactionFields
             value={fields}
             onChange={(nextFields) => {
@@ -168,13 +199,13 @@ export function EditTransactionDialog({
           {error && (
             <p
               role="alert"
-              className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+              className="rounded-lg bg-red-50 p-3 text-sm text-red-700"
             >
               {error}
             </p>
           )}
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               disabled={saving}
@@ -186,15 +217,22 @@ export function EditTransactionDialog({
 
             <button
               type="submit"
-              disabled={saving || loadingCategories}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={
+                saving ||
+                loadingCategories ||
+                !validCategory
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving && <Loader2 size={16} className="animate-spin" />}
+              {saving && (
+                <Loader2 size={16} className="animate-spin" />
+              )}
+
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

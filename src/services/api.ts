@@ -104,12 +104,29 @@ async function parseErrorResponse(
   }
 }
 
+let isRedirectingToLogin = false;
+
 async function handleApiError(
   response: Response,
+  path: string,
 ): Promise<never> {
   const message = await parseErrorResponse(response);
 
   if (response.status === 401) {
+    if (!path.startsWith("/auth/")) {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem("auth_user");
+
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/login" &&
+        !isRedirectingToLogin
+      ) {
+        isRedirectingToLogin = true;
+        window.location.href = "/login";
+      }
+    }
+
     throw new ApiError(
       401,
       "Sesión no válida o expirada. Inicia sesión nuevamente.",
@@ -129,7 +146,7 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    await handleApiError(response);
+    await handleApiError(response, path);
   }
 
   if (response.status === 204) {

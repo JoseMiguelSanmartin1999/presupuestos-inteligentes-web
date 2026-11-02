@@ -1,10 +1,6 @@
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  CalendarDays,
-  RefreshCw,
-  Wallet,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, RefreshCw, Wallet } from "lucide-react";
 
 import {
   getMonthlyBudgets,
@@ -13,6 +9,7 @@ import {
 } from "@/services/budget.service";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -40,53 +37,86 @@ const monthNames = [
   "Diciembre",
 ];
 
+type BudgetLoadState = {
+  key: string;
+  data: MonthlyBudgetSummary | null;
+  error: string | null;
+};
+
 export function MonthlyBudgets() {
-  const today = new Date();
+  // Fecha inicial estable durante la vida del componente.
+  const [initialDate] = useState(() => new Date());
 
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [year, setYear] = useState(
+    () => initialDate.getFullYear(),
+  );
 
-  const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
-  const [summary, setSummary] =
-    useState<MonthlyBudgetSummary["summary"] | null>(null);
+  const [month, setMonth] = useState(
+    () => initialDate.getMonth() + 1,
+  );
 
-  const [hasBudget, setHasBudget] = useState(false);
-  const [note, setNote] = useState<string | undefined>();
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const loadBudgets = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const [loadState, setLoadState] =
+    useState<BudgetLoadState | null>(null);
 
-    try {
-      const result = await getMonthlyBudgets(year, month);
-
-      setBudgets(result.budgets);
-      setSummary(result.summary);
-      setHasBudget(result.hasBudget);
-      setNote(result.note);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudieron cargar los presupuestos.",
-      );
-
-      setBudgets([]);
-      setSummary(null);
-      setHasBudget(false);
-      setNote(undefined);
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month, refreshKey]);
+  // Identifica la consulta correspondiente a la selección actual.
+  const requestKey = `${year}-${month}-${refreshKey}`;
 
   useEffect(() => {
-    void loadBudgets();
-  }, [loadBudgets]);
+    let cancelled = false;
+
+    async function fetchBudgets() {
+      try {
+        const result = await getMonthlyBudgets(year, month);
+
+        if (!cancelled) {
+          setLoadState({
+            key: requestKey,
+            data: result,
+            error: null,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadState({
+            key: requestKey,
+            data: null,
+            error:
+              err instanceof Error
+                ? err.message
+                : "No se pudieron cargar los presupuestos.",
+          });
+        }
+      }
+    }
+
+    void fetchBudgets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [year, month, requestKey]);
+
+  // Los datos anteriores no se muestran si cambia
+  // el mes, el año o se solicita una actualización.
+  const isCurrent = loadState?.key === requestKey;
+
+  const loading = !isCurrent;
+
+  const error = isCurrent
+    ? (loadState.error ?? null)
+    : null;
+
+  const result =
+    isCurrent && !error
+      ? loadState.data
+      : null;
+
+  const budgets: MonthlyBudget[] = result?.budgets ?? [];
+  const summary = result?.summary ?? null;
+  const hasBudget = result?.hasBudget ?? false;
+  const note = result?.note;
 
   const totals = useMemo(() => {
     if (!summary) {
@@ -106,6 +136,10 @@ export function MonthlyBudgets() {
     };
   }, [summary]);
 
+  function refreshBudgets() {
+    setRefreshKey((value) => value + 1);
+  }
+
   return (
     <section className="space-y-6">
       {/* Encabezado */}
@@ -122,11 +156,13 @@ export function MonthlyBudgets() {
 
         <Button
           variant="outline"
-          onClick={() => setRefreshKey((value) => value + 1)}
+          onClick={refreshBudgets}
           disabled={loading}
         >
           <RefreshCw
-            className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            className={`mr-2 h-4 w-4 ${
+              loading ? "animate-spin" : ""
+            }`}
           />
           Actualizar
         </Button>
@@ -148,7 +184,9 @@ export function MonthlyBudgets() {
             id="budget-month"
             className="rounded-md border bg-background px-3 py-2 text-sm"
             value={month}
-            onChange={(event) => setMonth(Number(event.target.value))}
+            onChange={(event) =>
+              setMonth(Number(event.target.value))
+            }
           >
             {monthNames.map((name, index) => (
               <option key={name} value={index + 1}>
@@ -168,11 +206,14 @@ export function MonthlyBudgets() {
             id="budget-year"
             className="rounded-md border bg-background px-3 py-2 text-sm"
             value={year}
-            onChange={(event) => setYear(Number(event.target.value))}
+            onChange={(event) =>
+              setYear(Number(event.target.value))
+            }
           >
             {Array.from(
               { length: 7 },
-              (_, index) => today.getFullYear() - 3 + index,
+              (_, index) =>
+                initialDate.getFullYear() - 3 + index,
             ).map((value) => (
               <option key={value} value={value}>
                 {value}
@@ -186,12 +227,14 @@ export function MonthlyBudgets() {
       {error && (
         <Card className="border-destructive">
           <CardContent className="flex flex-col gap-3 pt-6">
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive">
+              {error}
+            </p>
 
             <Button
               variant="outline"
               className="self-start"
-              onClick={() => setRefreshKey((value) => value + 1)}
+              onClick={refreshBudgets}
             >
               Reintentar
             </Button>
@@ -266,15 +309,20 @@ export function MonthlyBudgets() {
           ) : (
             budgets.map((budget) => {
               const percentage = budget.usagePercent;
+
               const progress = Math.min(
                 Math.max(percentage, 0),
                 100,
               );
 
-              const exceeded = budget.status === "EXCEEDED";
+              const exceeded =
+                budget.status === "EXCEEDED";
 
               return (
-                <div key={budget.id} className="space-y-2">
+                <div
+                  key={budget.id}
+                  className="space-y-2"
+                >
                   {/* Nombre y valores */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -282,12 +330,14 @@ export function MonthlyBudgets() {
                         className="h-3 w-3 rounded-full"
                         style={{
                           backgroundColor:
-                            budget.category?.color ?? "#94a3b8",
+                            budget.category?.color ??
+                            "#94a3b8",
                         }}
                       />
 
                       <span className="font-medium">
-                        {budget.category?.name ?? "Sin categoría"}
+                        {budget.category?.name ??
+                          "Sin categoría"}
                       </span>
                     </div>
 
@@ -302,7 +352,8 @@ export function MonthlyBudgets() {
                     className="h-2 overflow-hidden rounded-full bg-muted"
                     role="progressbar"
                     aria-label={`Progreso de ${
-                      budget.category?.name ?? "la categoría"
+                      budget.category?.name ??
+                      "la categoría"
                     }`}
                     aria-valuemin={0}
                     aria-valuemax={100}
@@ -316,16 +367,21 @@ export function MonthlyBudgets() {
                             ? "bg-yellow-500"
                             : "bg-primary"
                       }`}
-                      style={{ width: `${progress}%` }}
+                      style={{
+                        width: `${progress}%`,
+                      }}
                     />
                   </div>
 
                   {/* Porcentaje y saldo disponible */}
                   <div className="flex justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{percentage.toFixed(1)}% utilizado</span>
+                    <span>
+                      {percentage.toFixed(1)}% utilizado
+                    </span>
 
                     <span>
-                      {money.format(budget.remaining)} disponible
+                      {money.format(budget.remaining)}{" "}
+                      disponible
                     </span>
                   </div>
 
@@ -373,7 +429,9 @@ function SummaryCard({
         {loading ? (
           <div className="h-8 animate-pulse rounded bg-muted" />
         ) : (
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-2xl font-bold">
+            {value}
+          </p>
         )}
       </CardContent>
     </Card>
