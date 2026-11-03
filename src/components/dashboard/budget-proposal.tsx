@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "@/services/api";
 import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
+  Pencil,
   Plus,
   RefreshCw,
+  Save,
   Sparkles,
   Trash2,
   Wallet,
+  X,
 } from "lucide-react";
 
 import {
@@ -17,6 +20,7 @@ import {
   getExpenseCategories,
   getSavedBudgetPlan,
   saveBudgetPlan,
+  updateApprovedBudgetPlan,
   type ApiCategory,
   type FixedExpense,
   type GenerateBudgetResponse,
@@ -222,6 +226,11 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<Action>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const savingRef = useRef(false);
+  const approvingRef = useRef(false);
+  const generatingRef = useRef(false);
 
   const availablePeriods = useMemo(() => getAvailablePeriods(), []);
 
@@ -235,6 +244,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
     ? formFingerprint(form) !== formFingerprint(formFromSaved(savedPlan))
     : true;
   const busy = loading || action !== null;
+  const fieldsDisabled = busy || (isApproved && !isEditing);
   const selectedIds = useMemo(
     () => new Set(form.categories.map((item) => item.categoryId)),
     [form.categories],
@@ -290,11 +300,13 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
   }, []);
 
   async function handlePeriodChange(newPeriod: Period) {
+    if (isEditing) return;
     if (newPeriod.year === period.year && newPeriod.month === period.month) return;
     setPeriod(newPeriod);
     setLoading(true);
     setNotice(null);
     setProposal(null);
+    setIsEditing(false);
     try {
       const plan = await getSavedBudgetPlan(newPeriod.year, newPeriod.month);
       setSavedPlan(plan);
@@ -344,12 +356,13 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
 
   async function handleGenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || isApproved) return;
+    if (generatingRef.current || busy || isApproved) return;
     const validationError = validateForm({ ...form, categories: [] }, false);
     if (validationError) {
       setNotice({ kind: "error", message: validationError });
       return;
     }
+    generatingRef.current = true;
     setAction("generate");
     setNotice(null);
     try {
@@ -359,10 +372,9 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
         fixedExpenses: normalizeExpenses(form.fixedExpenses).filter((item) => item.amount > 0),
       });
       setProposal(result);
-      setPeriod({ year: result.period.year, month: result.period.month });
-      if (savedPlan && (savedPlan.year !== result.period.year || savedPlan.month !== result.period.month)) {
-        setSavedPlan(null);
-      }
+
+      // Conservamos el período que el usuario tiene seleccionado actualmente en el selector
+      // para evitar conflictos (409) con meses anteriores ya aprobados.
       updateForm(
         "categories",
         result.categories.map((item) => ({
@@ -370,20 +382,27 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
           amount: Number(item.amount ?? item.proposedAmount ?? 0),
         })),
       );
+
+      setNotice({
+        kind: "success",
+        message: `Propuesta calculada con éxito para ${formatPeriodLabel(period)}. Revisa los límites por categoría y guarda el borrador.`,
+      });
     } catch (error) {
       setNotice({ kind: "error", message: errorMessage(error) });
     } finally {
+      generatingRef.current = false;
       setAction(null);
     }
   }
 
   async function handleSave() {
-    if (busy || isApproved) return;
+    if (savingRef.current || busy || isApproved) return;
     const validationError = validateForm(form, false);
     if (validationError) {
       setNotice({ kind: "error", message: validationError });
       return;
     }
+    savingRef.current = true;
     setAction("save");
     setNotice(null);
     try {
@@ -400,14 +419,30 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
       setForm(formFromSaved(plan));
       setNotice({ kind: "success", message: "Borrador guardado correctamente." });
     } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
+      if (error instanceof ApiError && error.status === 409) {
+        setNotice({
+          kind: "error",
+          message: `${error.message}. Este período ya tiene un presupuesto registrado o aprobado en la base de datos. Selecciona otro mes en el selector superior para continuar.`,
+        });
+        // Sincronizar el plan existente para actualizar el estado visual
+        try {
+          const existing = await getSavedBudgetPlan(period.year, period.month);
+          setSavedPlan(existing);
+          setForm(formFromSaved(existing));
+        } catch {
+          // Si no se puede obtener, se mantiene el estado previo
+        }
+      } else {
+        setNotice({ kind: "error", message: errorMessage(error) });
+      }
     } finally {
+      savingRef.current = false;
       setAction(null);
     }
   }
 
   async function handleApprove() {
-    if (busy || isApproved) return;
+    if (approvingRef.current || busy || isApproved) return;
     if (!savedPlan) {
       setNotice({ kind: "error", message: "Guarda la propuesta antes de aprobarla." });
       return;
@@ -421,6 +456,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
       setNotice({ kind: "error", message: validationError });
       return;
     }
+    approvingRef.current = true;
     setAction("approve");
     setNotice(null);
     try {
@@ -429,13 +465,78 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
       setNotice({ kind: "success", message: result.message });
       onApproved?.();
     } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
+      if (error instanceof ApiError && error.status === 409) {
+        setNotice({
+          kind: "error",
+          message: `${error.message}. Este presupuesto ya había sido aprobado previamente.`,
+        });
+        setSavedPlan((prev) =>
+          prev ? { ...prev, status: "APPROVED", approvedAt: new Date().toISOString() } : null,
+        );
+      } else {
+        setNotice({ kind: "error", message: errorMessage(error) });
+      }
+    } finally {
+      approvingRef.current = false;
+      setAction(null);
+    }
+  }
+
+  async function handleUpdateApproved() {
+    if (busy || !isApproved || !isEditing || !savedPlan) return;
+
+    const validationError = validateForm(form, true);
+
+    if (validationError) {
+      setNotice({
+        kind: "error",
+        message: validationError,
+      });
+      return;
+    }
+
+    setAction("save");
+    setNotice(null);
+
+    try {
+      const response = await updateApprovedBudgetPlan(savedPlan.id, {
+        monthlyIncome: summary.income,
+        savingsGoalPercent: summary.savingsPercent,
+        fixedExpenses: normalizeExpenses(form.fixedExpenses).filter(
+          (item) => item.amount > 0,
+        ),
+        categories: form.categories,
+      });
+
+      setSavedPlan(response.plan);
+      setForm(formFromSaved(response.plan));
+      setIsEditing(false);
+
+      setNotice({
+        kind: "success",
+        message: response.message,
+      });
+
+      onApproved?.();
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: errorMessage(error),
+      });
     } finally {
       setAction(null);
     }
   }
 
-  const showPlan = Boolean(proposal || savedPlan || form.categories.length);
+  function handleCancelEdit() {
+    if (!savedPlan || busy) return;
+
+    setForm(formFromSaved(savedPlan));
+    setIsEditing(false);
+    setNotice(null);
+  }
+
+  const showPlan = Boolean(proposal || savedPlan || form.categories.length > 0 || !loading);
 
   return (
     <section className="space-y-6">
@@ -445,6 +546,42 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
           <p className="text-sm text-muted-foreground">
             Planifica tus ingresos, ahorro y límites de gasto mensuales.
           </p>
+
+          {isApproved && !isEditing && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setIsEditing(true)}
+              className="mt-3"
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar presupuesto
+            </Button>
+          )}
+
+          {isApproved && isEditing && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleUpdateApproved()}
+                disabled={busy || !hasChanges}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                Guardar cambios
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelEdit}
+                disabled={busy}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Cancelar edición
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Selector de período */}
@@ -453,7 +590,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
           <select
             aria-label="Seleccionar período a presupuestar"
             value={`${period.year}-${period.month}`}
-            disabled={busy}
+            disabled={busy || isEditing}
             onChange={(e) => {
               const [year, month] = e.target.value.split("-").map(Number);
               void handlePeriodChange({ year, month });
@@ -474,9 +611,47 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
       {loading && <p className="text-sm text-muted-foreground">Cargando información del presupuesto...</p>}
 
       {savedPlan && (
-        <p className="text-sm text-muted-foreground">
-          Estado ({period.month}/{period.year}): <strong>{isApproved ? "Aprobado" : hasChanges ? "Borrador con cambios" : "Borrador guardado"}</strong>
-        </p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Estado ({period.month}/{period.year}):</span>
+          <span
+            className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${
+              isApproved
+                ? isEditing
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                  : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                : hasChanges
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                  : "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+            }`}
+          >
+            {isApproved
+              ? isEditing
+                ? "Aprobado (En edición)"
+                : "Aprobado (Solo lectura)"
+              : hasChanges
+                ? "Borrador con cambios sin guardar"
+                : "Borrador guardado"}
+          </span>
+          {isApproved && !isEditing && (
+            <span className="text-xs text-muted-foreground">
+              — Este período está cerrado. Para modificarlo, usa «Editar presupuesto» arriba, o selecciona otro mes.
+            </span>
+          )}
+          {isApproved && isEditing && (
+            <span className="text-xs text-muted-foreground">
+              — Editando valores del presupuesto aprobado. Recuerda guardar los cambios cuando termines.
+            </span>
+          )}
+        </div>
+      )}
+
+      {!savedPlan && !loading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Estado ({period.month}/{period.year}):</span>
+          <span className="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            Nuevo (Sin presupuesto registrado)
+          </span>
+        </div>
       )}
 
       <Card>
@@ -492,13 +667,13 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
               <div className="space-y-2">
                 <Label htmlFor="monthly-income">Ingresos mensuales ($)</Label>
                 <Input id="monthly-income" type="number" min="0.01" step="0.01"
-                  value={form.monthlyIncome} disabled={busy || isApproved} required
+                  value={form.monthlyIncome} disabled={fieldsDisabled} required
                   onChange={(event) => updateForm("monthlyIncome", event.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="savings-goal">Meta de ahorro (%)</Label>
                 <Input id="savings-goal" type="number" min="0" max="100" step="0.01"
-                  value={form.savingsGoalPercent} disabled={busy || isApproved} required
+                  value={form.savingsGoalPercent} disabled={fieldsDisabled} required
                   onChange={(event) => updateForm("savingsGoalPercent", event.target.value)} />
               </div>
             </div>
@@ -509,7 +684,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
                   <h3 className="font-semibold">Gastos fijos</h3>
                   <p className="text-xs text-muted-foreground">Por ejemplo, arriendo, internet y servicios.</p>
                 </div>
-                <Button type="button" variant="outline" size="sm" disabled={busy || isApproved}
+                <Button type="button" variant="outline" size="sm" disabled={fieldsDisabled}
                   onClick={() => updateForm("fixedExpenses", [...form.fixedExpenses, { name: "", amount: 0 }])}>
                   <Plus className="mr-2 h-4 w-4" /> Agregar gasto
                 </Button>
@@ -517,13 +692,13 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
               {form.fixedExpenses.map((expense, index) => (
                 <div key={index} className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
                   <Input aria-label={`Nombre del gasto fijo ${index + 1}`} placeholder="Nombre del gasto"
-                    value={expense.name} disabled={busy || isApproved}
+                    value={expense.name} disabled={fieldsDisabled}
                     onChange={(event) => updateExpense(index, { name: event.target.value })} />
                   <Input aria-label={`Importe del gasto fijo ${index + 1}`} type="number"
-                    min="0" step="0.01" value={expense.amount} disabled={busy || isApproved}
+                    min="0" step="0.01" value={expense.amount} disabled={fieldsDisabled}
                     onChange={(event) => updateExpense(index, { amount: Number(event.target.value) })} />
                   <Button type="button" variant="ghost" size="icon" aria-label="Eliminar gasto fijo"
-                    disabled={busy || isApproved}
+                    disabled={fieldsDisabled}
                     onClick={() => updateForm("fixedExpenses", form.fixedExpenses.filter((_, i) => i !== index))}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -583,9 +758,9 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
                   <div key={item.categoryId} className="grid gap-2 sm:grid-cols-[1fr_160px_auto] sm:items-center">
                     <Label htmlFor={`budget-${item.categoryId}`}>{category?.name ?? item.categoryId}</Label>
                     <Input id={`budget-${item.categoryId}`} type="number" min="0.01" step="0.01"
-                      value={Number.isNaN(item.amount) ? "" : item.amount} disabled={busy || isApproved}
+                      value={Number.isNaN(item.amount) ? "" : item.amount} disabled={fieldsDisabled}
                       onChange={(event) => updateCategory(item.categoryId, Number(event.target.value))} />
-                    <Button type="button" variant="ghost" size="icon" disabled={busy || isApproved}
+                    <Button type="button" variant="ghost" size="icon" disabled={fieldsDisabled}
                       aria-label={`Eliminar presupuesto de ${category?.name ?? "categoría"}`}
                       onClick={() => updateForm("categories", form.categories.filter((entry) => entry.categoryId !== item.categoryId))}>
                       <Trash2 className="h-4 w-4" />
@@ -594,7 +769,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
                 );
               })}
 
-              {!isApproved && (
+              {(!isApproved || isEditing) && (
                 <div className="flex flex-wrap gap-2">
                   <select aria-label="Seleccionar categoría para presupuestar"
                     className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
@@ -612,7 +787,7 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
 
               {form.categories.length === 0 && (
                 <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No hay categorías presupuestadas. Agrega una para continuar.
+                  No hay categorías presupuestadas para este período. Puedes generar una propuesta con el botón superior o agregar categorías manualmente con el selector de abajo.
                 </p>
               )}
 
@@ -623,16 +798,18 @@ export function BudgetProposal({ onApproved }: BudgetProposalProps) {
                 </strong>
               </div>
 
-              <div className="flex flex-wrap gap-3">
-                <Button type="button" variant="outline" onClick={handleSave}
-                  disabled={busy || isApproved || (!hasChanges && Boolean(savedPlan))}>
-                  {action === "save" ? "Guardando..." : "Guardar borrador"}
-                </Button>
-                <Button type="button" onClick={handleApprove}
-                  disabled={busy || isApproved || !savedPlan || hasChanges || form.categories.length === 0 || summary.remaining < 0}>
-                  {action === "approve" ? "Aprobando..." : "Aprobar presupuesto"}
-                </Button>
-              </div>
+              {!isApproved && (
+                <div className="flex flex-wrap gap-3">
+                  <Button type="button" variant="outline" onClick={handleSave}
+                    disabled={busy || isApproved || (!hasChanges && Boolean(savedPlan))}>
+                    {action === "save" ? "Guardando..." : "Guardar borrador"}
+                  </Button>
+                  <Button type="button" onClick={handleApprove}
+                    disabled={busy || isApproved || !savedPlan || hasChanges || form.categories.length === 0 || summary.remaining < 0}>
+                    {action === "approve" ? "Aprobando..." : "Aprobar presupuesto"}
+                  </Button>
+                </div>
+              )}
               {!savedPlan && <p className="text-xs text-muted-foreground">Guarda el borrador antes de aprobarlo.</p>}
               {savedPlan && hasChanges && !isApproved && (
                 <p className="text-xs text-muted-foreground">Tienes cambios pendientes de guardar.</p>

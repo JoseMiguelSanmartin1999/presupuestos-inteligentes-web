@@ -27,23 +27,45 @@ export interface LoginResponse {
 const TOKEN_KEY = "access_token";
 const USER_KEY = "auth_user";
 
+
 export async function login(
   credentials: LoginCredentials,
 ): Promise<LoginResponse> {
-  const response = await apiRequest<LoginResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(credentials),
-  });
+  const response = await apiRequest<LoginResponse>(
+    "/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(credentials),
+    },
+  );
 
-  if (!response.accessToken) {
-    throw new Error("El servidor no devolvió un token de acceso.");
+  if (
+    !response ||
+    typeof response.accessToken !== "string" ||
+    !response.accessToken.trim() ||
+    !response.user ||
+    typeof response.user.id !== "string" ||
+    typeof response.user.name !== "string" ||
+    typeof response.user.email !== "string"
+  ) {
+    throw new Error(
+      "El servidor devolvió una respuesta de autenticación inválida.",
+    );
   }
 
-  localStorage.setItem(TOKEN_KEY, response.accessToken);
-  localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+  localStorage.setItem(
+    TOKEN_KEY,
+    response.accessToken,
+  );
+
+  localStorage.setItem(
+    USER_KEY,
+    JSON.stringify(response.user),
+  );
 
   return response;
 }
+
 
 export async function registerUser(
   data: RegisterCredentials,

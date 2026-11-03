@@ -1,7 +1,7 @@
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2, Pencil } from "lucide-react";
-
+import { validateTransactionAmount } from "../utils/transaction-validation";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +51,7 @@ export function EditTransactionDialog({
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,14 +94,16 @@ export function EditTransactionDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (saving) return;
+    if (savingRef.current) return;
 
-    const parsedAmount = Number(amount);
+    const amountError = validateTransactionAmount(amount);
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError("Ingresa un importe válido mayor que cero.");
+    if (amountError) {
+      setError(amountError);
       return;
     }
+
+    const parsedAmount = Number(amount);
 
     if (!description.trim()) {
       setError("Ingresa una descripción para el movimiento.");
@@ -127,6 +130,7 @@ export function EditTransactionDialog({
       categoryId,
     };
 
+    savingRef.current = true;
     setSaving(true);
     setError(null);
 
@@ -140,6 +144,7 @@ export function EditTransactionDialog({
           : "No se pudo actualizar la transacción.",
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

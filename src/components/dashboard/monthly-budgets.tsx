@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, RefreshCw, Wallet } from "lucide-react";
 
@@ -43,7 +42,13 @@ type BudgetLoadState = {
   error: string | null;
 };
 
-export function MonthlyBudgets() {
+interface MonthlyBudgetsProps {
+  refreshKey?: number;
+}
+
+export function MonthlyBudgets({
+  refreshKey = 0,
+}: MonthlyBudgetsProps) {
   // Fecha inicial estable durante la vida del componente.
   const [initialDate] = useState(() => new Date());
 
@@ -55,13 +60,13 @@ export function MonthlyBudgets() {
     () => initialDate.getMonth() + 1,
   );
 
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [localRefreshKey, setLocalRefreshKey] = useState(0);
 
   const [loadState, setLoadState] =
     useState<BudgetLoadState | null>(null);
 
   // Identifica la consulta correspondiente a la selección actual.
-  const requestKey = `${year}-${month}-${refreshKey}`;
+  const requestKey = `${year}-${month}-${refreshKey}-${localRefreshKey}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +142,7 @@ export function MonthlyBudgets() {
   }, [summary]);
 
   function refreshBudgets() {
-    setRefreshKey((value) => value + 1);
+    setLocalRefreshKey((value) => value + 1);
   }
 
   return (

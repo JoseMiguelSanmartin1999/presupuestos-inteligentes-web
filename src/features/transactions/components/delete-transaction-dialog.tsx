@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 import {
@@ -26,10 +26,12 @@ export function DeleteTransactionDialog({
 }: DeleteTransactionDialogProps) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deletingRef = useRef(false);
 
   async function handleDelete() {
-    if (deleting) return;
+    if (deletingRef.current) return;
 
+    deletingRef.current = true;
     setDeleting(true);
     setError(null);
 
@@ -43,6 +45,7 @@ export function DeleteTransactionDialog({
           : "No se pudo eliminar la transacción.",
       );
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   }

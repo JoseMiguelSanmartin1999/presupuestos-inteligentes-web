@@ -551,3 +551,23 @@ export async function approveSavedBudgetPlan(
 }
 
 
+
+export interface UpdateApprovedBudgetResponse {
+  message: string;
+  plan: SavedBudgetPlan;
+}
+
+export async function updateApprovedBudgetPlan(
+  planId: string,
+  data: Omit<SaveBudgetPlanRequest, "year" | "month">,
+): Promise<UpdateApprovedBudgetResponse> {
+  validatePlanId(planId);
+
+  return apiRequest<UpdateApprovedBudgetResponse>(
+    `/budget-plans/${encodeURIComponent(planId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}

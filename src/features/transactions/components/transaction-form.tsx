@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { LoaderCircle, PlusCircle } from "lucide-react";
+import { validateTransactionAmount } from "../utils/transaction-validation";
 
 import {
   Dialog,
@@ -53,6 +54,7 @@ export function TransactionForm({
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,14 +97,16 @@ export function TransactionForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (submitting) return;
+    if (submittingRef.current) return;
 
-    const parsedAmount = Number(amount);
+    const amountError = validateTransactionAmount(amount);
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError("Ingresa un monto válido mayor que cero.");
+    if (amountError) {
+      setError(amountError);
       return;
     }
+
+    const parsedAmount = Number(amount);
 
     if (!description.trim()) {
       setError("Ingresa una descripción para el movimiento.");
@@ -119,6 +123,7 @@ export function TransactionForm({
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
 
@@ -140,6 +145,7 @@ export function TransactionForm({
           : "No se pudo registrar la transacción.",
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
