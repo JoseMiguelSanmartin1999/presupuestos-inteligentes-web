@@ -25,7 +25,7 @@ const currency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-const dataSource = import.meta.env.VITE_DATA_SOURCE ?? "demo";
+const dataSource = import.meta.env.VITE_DATA_SOURCE ?? "api";
 
 export function DashboardPage() {
   const {

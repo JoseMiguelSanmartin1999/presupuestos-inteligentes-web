@@ -1,14 +1,26 @@
-import { useEffect, useState } from "react";
-import { LoaderCircle, PlusCircle, X } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { LoaderCircle, PlusCircle } from "lucide-react";
+import { validateTransactionAmount } from "../utils/transaction-validation";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
 import {
   TransactionFields,
   type TransactionFieldsValue,
 } from "./transaction-fields";
+
 import {
   createTransaction,
   getCategories,
-  type Category,
-} from "@/features/transactions/services/transactions.service";
+} from "../services/transactions.service";
+
+import type { Category } from "../types/transaction.types";
 
 interface TransactionFormProps {
   onCreated: () => void;
@@ -37,18 +49,17 @@ export function TransactionForm({
   }));
 
   const { type, amount, description, date, categoryId } = fields;
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadCategories() {
-      setLoadingCategories(true);
-      setError(null);
-
       try {
         const result = await getCategories();
 
@@ -77,30 +88,25 @@ export function TransactionForm({
     };
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !submitting) {
-        onClose();
-      }
-    }
+  const validCategory = categories.some(
+    (category) =>
+      category.id === categoryId &&
+      category.type === type,
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, submitting]);
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
 
-    const parsedAmount = Number(amount);
+    if (submittingRef.current) return;
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError("Ingresa un monto mayor que cero.");
+    const amountError = validateTransactionAmount(amount);
+
+    if (amountError) {
+      setError(amountError);
       return;
     }
+
+    const parsedAmount = Number(amount);
 
     if (!description.trim()) {
       setError("Ingresa una descripción para el movimiento.");
@@ -112,18 +118,14 @@ export function TransactionForm({
       return;
     }
 
-    if (
-      !categories.some(
-        (category) =>
-          category.id === categoryId &&
-          category.type === type,
-      )
-    ) {
-      setError("Selecciona una categoría válida para este movimiento.");
+    if (!validCategory) {
+      setError("Selecciona una categoría válida.");
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
+    setError(null);
 
     try {
       await createTransaction({
@@ -143,56 +145,52 @@ export function TransactionForm({
           : "No se pudo registrar la transacción.",
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !submitting) {
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !submitting) {
           onClose();
         }
       }}
     >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="transaction-dialog-title"
-        className="my-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+      <DialogContent
+        showCloseButton={!submitting}
+        className="max-h-[90vh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-xl"
+        onEscapeKeyDown={(event) => {
+          if (submitting) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (submitting) event.preventDefault();
+        }}
       >
-        <div className="mb-6 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
             <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <PlusCircle size={23} />
             </div>
 
             <div>
-              <h2
-                id="transaction-dialog-title"
-                className="text-lg font-semibold text-slate-900"
-              >
+              <DialogTitle className="text-xl">
                 Nueva transacción
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              </DialogTitle>
+
+              <DialogDescription className="mt-1">
                 Registra un ingreso o gasto en tus finanzas.
-              </p>
+              </DialogDescription>
             </div>
           </div>
+        </DialogHeader>
 
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Cerrar formulario"
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={(event) => void handleSubmit(event)}
+          className="mt-4 space-y-4"
+        >
           <TransactionFields
             value={fields}
             onChange={(nextFields) => {
@@ -205,19 +203,19 @@ export function TransactionForm({
           />
 
           {error && (
-            <div
+            <p
               role="alert"
-              className="break-words rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
             >
               {error}
-            </div>
+            </p>
           )}
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
               disabled={submitting}
+              onClick={onClose}
               className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
             >
               Cancelar
@@ -228,17 +226,16 @@ export function TransactionForm({
               disabled={
                 submitting ||
                 loadingCategories ||
-                !categories.some(
-                  (category) =>
-                    category.id === categoryId &&
-                    category.type === type,
-                )
+                !validCategory
               }
-              className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
             >
               {submitting ? (
                 <>
-                  <LoaderCircle size={18} className="animate-spin" />
+                  <LoaderCircle
+                    size={18}
+                    className="animate-spin"
+                  />
                   Guardando...
                 </>
               ) : (
@@ -250,7 +247,7 @@ export function TransactionForm({
             </button>
           </div>
         </form>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

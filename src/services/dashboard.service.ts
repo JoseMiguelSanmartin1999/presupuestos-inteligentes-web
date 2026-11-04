@@ -1,4 +1,4 @@
-
+import { getTransactions } from "@/features/transactions/services/transactions.service";
 import { dashboardDemoData } from "@/data/dashboard.demo";
 import { apiRequest } from "@/services/api";
 import type {
@@ -10,7 +10,7 @@ import type {
   TransactionType,
 } from "@/types/dashboard";
 
-const DATA_SOURCE = import.meta.env.VITE_DATA_SOURCE ?? "demo";
+const DATA_SOURCE = import.meta.env.VITE_DATA_SOURCE ?? "api";
 
 const CATEGORY_COLORS = [
   "#6366f1",
@@ -299,8 +299,36 @@ export async function getTransactionSummary(
 
 async function getTransactionsSafely(): Promise<NormalizedTransaction[]> {
   try {
-    const response = await apiRequest<unknown>("/transactions");
-    return normalizeTransactions(response);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    const from = new Date(year, month, 1)
+      .toLocaleDateString("en-CA");
+
+    const to = new Date(year, month + 1, 0)
+      .toLocaleDateString("en-CA");
+
+    const allTransactions: unknown[] = [];
+    const limit = 100;
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const response = await getTransactions({
+        from,
+        to,
+        page,
+        limit,
+      });
+
+      allTransactions.push(...response.data);
+
+      totalPages = response.pagination.totalPages;
+      page++;
+    } while (page <= totalPages);
+
+    return normalizeTransactions(allTransactions);
   } catch (error) {
     console.warn("No se pudieron cargar las transacciones:", error);
     return [];

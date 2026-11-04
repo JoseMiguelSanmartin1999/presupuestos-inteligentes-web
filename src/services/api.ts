@@ -1,3 +1,4 @@
+
 const DEFAULT_API_URL =
   "https://presupuestosinteligentes.onrender.com";
 
@@ -6,6 +7,7 @@ const API_URL = (
 ).replace(/\/+$/, "");
 
 const ACCESS_TOKEN_KEY = "access_token";
+const USER_KEY = "auth_user";
 
 interface ApiErrorResponse {
   message?: string | string[];
@@ -73,13 +75,13 @@ async function parseErrorResponse(
   response: Response,
 ): Promise<string> {
   const fallback =
-    response.statusText || "Error desconocido del servidor";
+    response.statusText ||
+    `Error HTTP ${response.status}`;
 
   try {
     const text = await response.text();
-    if (!text) {
-      return fallback;
-    }
+
+    if (!text) return fallback;
 
     try {
       const data: unknown = JSON.parse(text);
@@ -94,25 +96,43 @@ async function parseErrorResponse(
           fallback,
         );
       }
+
+      return fallback;
     } catch {
       return text;
     }
-
-    return fallback;
   } catch {
     return fallback;
   }
 }
 
+let isRedirectingToLogin = false;
+
 async function handleApiError(
   response: Response,
+  path: string,
 ): Promise<never> {
   const message = await parseErrorResponse(response);
 
   if (response.status === 401) {
+    if (!path.startsWith("/auth/")) {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+
+      if (
+        window.location.pathname !== "/login" &&
+        !isRedirectingToLogin
+      ) {
+        isRedirectingToLogin = true;
+        window.location.replace("/login");
+      }
+    }
+
     throw new ApiError(
       401,
-      "Sesión no válida o expirada. Inicia sesión nuevamente.",
+      path.startsWith("/auth/")
+        ? message
+        : "Sesión no válida o expirada. Inicia sesión nuevamente.",
     );
   }
 
@@ -123,13 +143,26 @@ export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: createHeaders(init),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: createHeaders(init),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+
+    throw new ApiError(
+      0,
+      "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo nuevamente.",
+    );
+  }
 
   if (!response.ok) {
-    await handleApiError(response);
+    await handleApiError(response, path);
   }
 
   if (response.status === 204) {
@@ -137,6 +170,7 @@ export async function apiRequest<T>(
   }
 
   const text = await response.text();
+
   if (!text) {
     return undefined as T;
   }
@@ -144,6 +178,9 @@ export async function apiRequest<T>(
   try {
     return JSON.parse(text) as T;
   } catch {
-    return text as unknown as T;
+    throw new ApiError(
+      response.status,
+      "El servidor devolvió una respuesta con formato inválido.",
+    );
   }
 }

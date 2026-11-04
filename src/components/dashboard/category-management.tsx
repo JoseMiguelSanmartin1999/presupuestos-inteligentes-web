@@ -24,49 +24,96 @@ interface CategoryManagementProps {
   onCategoriesChanged?: () => void;
 }
 
+type CategoriesLoadState = {
+  key: number;
+  categories: Category[];
+  error: string | null;
+};
+
 export function CategoryManagement({
   onCategoriesChanged,
 }: CategoryManagementProps) {
-  const [categories, setCategories] = useState<Category[]>([]);
   const [name, setName] = useState("");
   const [type, setType] = useState<TransactionType>("EXPENSE");
   const [color, setColor] = useState(defaultColors[0]);
-  const [loading, setLoading] = useState(true);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const [loadState, setLoadState] =
+    useState<CategoriesLoadState | null>(null);
+
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function loadCategories() {
-    setLoading(true);
-    setError(null);
+  // Carga inicial y actualización de categorías.
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
-      const result = await getCategories();
-      setCategories(result);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudieron cargar las categorías.",
-      );
-    } finally {
-      setLoading(false);
+    async function fetchCategories() {
+      try {
+        const result = await getCategories();
+
+        if (!cancelled) {
+          setLoadState({
+            key: refreshKey,
+            categories: result,
+            error: null,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadState({
+            key: refreshKey,
+            categories: [],
+            error:
+              err instanceof Error
+                ? err.message
+                : "No se pudieron cargar las categorías.",
+          });
+        }
+      }
     }
+
+    void fetchCategories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  // Solo mostramos datos correspondientes a la carga actual.
+  const isCurrent = loadState?.key === refreshKey;
+  const loading = !isCurrent;
+
+  const categories = isCurrent
+    ? (loadState.categories ?? [])
+    : [];
+
+  const loadError = isCurrent
+    ? (loadState.error ?? null)
+    : null;
+
+  const error = formError ?? loadError;
+
+  function refreshCategories() {
+    setRefreshKey((current) => current + 1);
   }
 
-  useEffect(() => {
-    void loadCategories();
-  }, []);
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
-    setError(null);
+
+    if (saving) return;
+
+    setFormError(null);
     setSuccess(null);
 
     const normalizedName = name.trim();
 
     if (!normalizedName) {
-      setError("Escribe el nombre de la categoría.");
+      setFormError("Escribe el nombre de la categoría.");
       return;
     }
 
@@ -79,24 +126,19 @@ export function CategoryManagement({
         color,
       });
 
-      setCategories((current) => {
-        if (current.some((category) => category.id === created.id)) {
-          return current;
-        }
-
-        return [...current, created].sort((a, b) =>
-          a.name.localeCompare(b.name, "es"),
-        );
-      });
-
       setName("");
-      setSuccess(`Categoría "${created.name}" creada correctamente.`);
+
+      setSuccess(
+        `Categoría "${created.name}" creada correctamente.`,
+      );
+
+      // Notifica al dashboard que se creó una categoría.
       onCategoriesChanged?.();
 
-      // Vuelve a consultar la API para mantener la lista sincronizada.
-      await loadCategories();
+      // Vuelve a consultar la API para sincronizar la lista.
+      refreshCategories();
     } catch (err) {
-      setError(
+      setFormError(
         err instanceof Error
           ? err.message
           : "No se pudo crear la categoría.",
@@ -132,8 +174,12 @@ export function CategoryManagement({
           >
             <span
               className="size-3 shrink-0 rounded-full"
-              style={{ backgroundColor: category.color || "#64748B" }}
+              style={{
+                backgroundColor:
+                  category.color || "#64748B",
+              }}
             />
+
             <span className="truncate text-sm font-medium text-slate-700">
               {category.name}
             </span>
@@ -145,6 +191,7 @@ export function CategoryManagement({
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      {/* Encabezado */}
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-11 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
           <Tags size={22} />
@@ -154,16 +201,19 @@ export function CategoryManagement({
           <h2 className="text-lg font-semibold text-slate-900">
             Gestión de categorías
           </h2>
+
           <p className="text-sm text-slate-500">
             Organiza tus ingresos y gastos.
           </p>
         </div>
       </div>
 
+      {/* Formulario */}
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(event) => void handleSubmit(event)}
         className="mb-8 grid grid-cols-1 items-end gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto]"
       >
+        {/* Nombre */}
         <div>
           <label
             htmlFor="category-name"
@@ -171,17 +221,22 @@ export function CategoryManagement({
           >
             Nombre de la categoría
           </label>
+
           <input
             id="category-name"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) =>
+              setName(event.target.value)
+            }
             placeholder="Ej. Transporte"
             maxLength={80}
             required
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            disabled={saving}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
           />
         </div>
 
+        {/* Tipo */}
         <div>
           <label
             htmlFor="category-type"
@@ -189,19 +244,24 @@ export function CategoryManagement({
           >
             Tipo
           </label>
+
           <select
             id="category-type"
             value={type}
+            disabled={saving}
             onChange={(event) =>
-              setType(event.target.value as TransactionType)
+              setType(
+                event.target.value as TransactionType,
+              )
             }
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
           >
             <option value="EXPENSE">Gasto</option>
             <option value="INCOME">Ingreso</option>
           </select>
         </div>
 
+        {/* Color */}
         <div>
           <label
             htmlFor="category-color"
@@ -209,33 +269,46 @@ export function CategoryManagement({
           >
             Color
           </label>
+
           <div className="flex h-[42px] items-center gap-2 rounded-xl border border-slate-200 px-3">
             <input
               id="category-color"
               type="color"
               value={color}
-              onChange={(event) => setColor(event.target.value)}
+              disabled={saving}
+              onChange={(event) =>
+                setColor(event.target.value)
+              }
               className="size-7 cursor-pointer border-0 bg-transparent p-0"
               aria-label="Seleccionar color de categoría"
             />
-            <span className="text-sm text-slate-600">{color}</span>
+
+            <span className="text-sm text-slate-600">
+              {color}
+            </span>
           </div>
         </div>
 
+        {/* Crear categoría */}
         <button
           type="submit"
           disabled={saving}
           className="flex h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? (
-            <LoaderCircle size={17} className="animate-spin" />
+            <LoaderCircle
+              size={17}
+              className="animate-spin"
+            />
           ) : (
             <Plus size={17} />
           )}
-          Crear categoría
+
+          {saving ? "Creando..." : "Crear categoría"}
         </button>
       </form>
 
+      {/* Mensajes */}
       {error && (
         <div
           role="alert"
@@ -254,40 +327,64 @@ export function CategoryManagement({
         </div>
       )}
 
+      {/* Listado de categorías */}
       <div className="space-y-6">
+        {/* Gastos */}
         <div>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-800">Gastos</h3>
+            <h3 className="font-semibold text-slate-800">
+              Gastos
+            </h3>
+
             <span className="text-xs text-slate-500">
               {expenseCategories.length} categorías
             </span>
           </div>
+
           {loading ? (
-            <p className="text-sm text-slate-500">Cargando categorías...</p>
+            <p className="text-sm text-slate-500">
+              Cargando categorías...
+            </p>
+          ) : loadError ? (
+            <p className="text-sm text-rose-600">
+              No se pudieron mostrar las categorías.
+            </p>
           ) : (
             renderCategoryList(expenseCategories)
           )}
         </div>
 
+        {/* Ingresos */}
         <div>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-800">Ingresos</h3>
+            <h3 className="font-semibold text-slate-800">
+              Ingresos
+            </h3>
+
             <span className="text-xs text-slate-500">
               {incomeCategories.length} categorías
             </span>
           </div>
+
           {loading ? (
-            <p className="text-sm text-slate-500">Cargando categorías...</p>
+            <p className="text-sm text-slate-500">
+              Cargando categorías...
+            </p>
+          ) : loadError ? (
+            <p className="text-sm text-rose-600">
+              No se pudieron mostrar las categorías.
+            </p>
           ) : (
             renderCategoryList(incomeCategories)
           )}
         </div>
       </div>
 
+      {/* Actualización manual */}
       {!loading && (
         <button
           type="button"
-          onClick={() => void loadCategories()}
+          onClick={refreshCategories}
           className="mt-5 text-sm font-medium text-blue-700 hover:text-blue-800"
         >
           Actualizar categorías

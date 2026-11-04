@@ -66,6 +66,8 @@ export function TransactionHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [categoryReloadKey, setCategoryReloadKey] = useState(0);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [transactionToDelete, setTransactionToDelete] =
     useState<ApiTransaction | null>(null);
   const [transactionToEdit, setTransactionToEdit] =
@@ -80,9 +82,14 @@ export function TransactionHistory({
 
         if (!cancelled) {
           setCategories(result);
+          setCategoriesError(null);
         }
       } catch (err) {
-        console.error("Error cargando categorías:", err);
+        if (!cancelled) {
+          setCategoriesError(
+            err instanceof Error ? err.message : "No se pudieron cargar las categorías.",
+          );
+        }
       }
     }
 
@@ -91,13 +98,12 @@ export function TransactionHistory({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [categoryReloadKey, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadTransactions() {
-      setLoading(true);
       try {
         const result = await getTransactions({
           page,
@@ -110,9 +116,15 @@ export function TransactionHistory({
 
         if (cancelled) return;
 
+        const nextTotalPages = Math.max(1, result.pagination.totalPages);
+        if (page > nextTotalPages) {
+          setPage(nextTotalPages);
+          return;
+        }
+
         setTransactions(result.data);
         setTotal(result.pagination.total);
-        setTotalPages(Math.max(1, result.pagination.totalPages));
+        setTotalPages(nextTotalPages);
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -123,6 +135,8 @@ export function TransactionHistory({
             : "No se pudieron cargar las transacciones.",
         );
         setTransactions([]);
+        setTotal(0);
+        setTotalPages(1);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -138,6 +152,7 @@ export function TransactionHistory({
   }, [page, type, categoryId, from, to, refreshKey, reloadKey]);
 
   function resetFilters() {
+    setLoading(true);
     setType("");
     setCategoryId("");
     setFrom("");
@@ -174,12 +189,26 @@ export function TransactionHistory({
           </button>
         </div>
 
+        {categoriesError && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <span>No se pudieron cargar las categorías: {categoriesError}</span>
+            <button
+              type="button"
+              onClick={() => setCategoryReloadKey((current) => current + 1)}
+              className="font-semibold underline underline-offset-2"
+            >
+              Reintentar categorías
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="space-y-1.5 text-sm font-medium text-slate-700">
             Tipo
             <select
               value={type}
               onChange={(event) => {
+                setLoading(true);
                 setType(event.target.value as "" | TransactionType);
                 setCategoryId("");
                 setPage(1);
@@ -197,6 +226,7 @@ export function TransactionHistory({
             <select
               value={categoryId}
               onChange={(event) => {
+                setLoading(true);
                 setCategoryId(event.target.value);
                 setPage(1);
               }}
@@ -220,6 +250,7 @@ export function TransactionHistory({
               value={from}
               max={to || undefined}
               onChange={(event) => {
+                setLoading(true);
                 setFrom(event.target.value);
                 setPage(1);
               }}
@@ -234,6 +265,7 @@ export function TransactionHistory({
               value={to}
               min={from || undefined}
               onChange={(event) => {
+                setLoading(true);
                 setTo(event.target.value);
                 setPage(1);
               }}
@@ -263,7 +295,14 @@ export function TransactionHistory({
 
         {error && (
           <div role="alert" className="m-5 rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            {error}
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="mt-2 font-semibold underline underline-offset-2"
+            >
+              Reintentar consulta
+            </button>
           </div>
         )}
 
@@ -271,7 +310,7 @@ export function TransactionHistory({
           <div role="status" className="p-10 text-center text-sm text-slate-500">
             Cargando transacciones...
           </div>
-        ) : transactions.length === 0 ? (
+        ) : error ? null : transactions.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-500">
             No se encontraron transacciones.
           </div>
@@ -400,6 +439,7 @@ export function TransactionHistory({
               // Si eliminamos el último registro de una página,
               // regresamos a la página anterior.
               if (transactions.length === 1 && page > 1) {
+                setLoading(true);
                 setPage((current) => current - 1);
               } else {
                 refresh();
@@ -437,6 +477,7 @@ export function TransactionHistory({
               type="button"
               disabled={page <= 1 || loading}
               onClick={() => {
+                setLoading(true);
                 setPage((current) => Math.max(1, current - 1));
               }}
               className="rounded-lg border border-slate-200 p-2 disabled:opacity-40"
@@ -449,6 +490,7 @@ export function TransactionHistory({
               type="button"
               disabled={page >= totalPages || loading}
               onClick={() => {
+                setLoading(true);
                 setPage((current) => current + 1);
               }}
               className="rounded-lg border border-slate-200 p-2 disabled:opacity-40"

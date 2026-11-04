@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -71,13 +71,20 @@ function toTransactionType(value: string): TransactionType | undefined {
   return undefined;
 }
 
+type TransactionsLoadState = {
+  key: string;
+  data: ApiTransaction[];
+  totalPages: number;
+  total: number;
+  error: string | null;
+};
+
 export function RecentTransactions({
   onTransactionsChanged,
 }: {
   transactions?: import("@/types/dashboard").Transaction[];
   onTransactionsChanged?: () => void;
 }) {
-  const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [from, setFrom] = useState("");
@@ -85,10 +92,9 @@ export function RecentTransactions({
   const [type, setType] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [loadState, setLoadState] = useState<TransactionsLoadState | null>(null);
 
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -102,37 +108,61 @@ export function RecentTransactions({
   const [editDate, setEditDate] = useState("");
   const [editCategoryId, setEditCategoryId] = useState("");
 
-  const loadTransactions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await getTransactions({
-        from: from || undefined,
-        to: to || undefined,
-        type: toTransactionType(type),
-        categoryId: categoryId || undefined,
-        page,
-        limit: PAGE_SIZE,
-      });
-
-      setTransactions(result.data);
-      setTotalPages(Math.max(1, result.pagination.totalPages));
-      setTotal(result.pagination.total);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudieron cargar las transacciones.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [from, to, type, categoryId, page]);
+  // Identifica cada combinación de filtros, página y actualización.
+  const requestKey = JSON.stringify([from, to, type, categoryId, page, refreshKey]);
 
   useEffect(() => {
-    void loadTransactions();
-  }, [loadTransactions]);
+    let cancelled = false;
+
+    async function fetchTransactions() {
+      try {
+        const result = await getTransactions({
+          from: from || undefined,
+          to: to || undefined,
+          type: toTransactionType(type),
+          categoryId: categoryId || undefined,
+          page,
+          limit: PAGE_SIZE,
+        });
+
+        if (!cancelled) {
+          setLoadState({
+            key: requestKey,
+            data: result.data,
+            totalPages: Math.max(1, result.pagination.totalPages),
+            total: result.pagination.total,
+            error: null,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadState({
+            key: requestKey,
+            data: [],
+            totalPages: 1,
+            total: 0,
+            error: err instanceof Error
+              ? err.message
+              : "No se pudieron cargar las transacciones.",
+          });
+        }
+      }
+    }
+
+    void fetchTransactions();
+    return () => { cancelled = true; };
+  }, [from, to, type, categoryId, page, refreshKey, requestKey]);
+
+  const isCurrent = loadState?.key === requestKey;
+  const loading = !isCurrent;
+  const transactions = isCurrent ? loadState.data : [];
+  const totalPages = isCurrent ? loadState.totalPages : 1;
+  const total = isCurrent ? loadState.total : 0;
+  const loadError = isCurrent ? loadState.error : null;
+
+  function refreshTransactions() {
+    setRefreshKey((current) => current + 1);
+  }
 
   useEffect(() => {
     getCategories()
@@ -223,7 +253,7 @@ export function RecentTransactions({
 
       setEditing(null);
       setNotice("Transacción actualizada correctamente.");
-      await loadTransactions();
+      refreshTransactions();
       onTransactionsChanged?.();
     } catch (err) {
       setError(
@@ -252,7 +282,7 @@ export function RecentTransactions({
       if (transactions.length === 1 && page > 1) {
         setPage((current) => current - 1);
       } else {
-        await loadTransactions();
+        refreshTransactions();
       }
 
       onTransactionsChanged?.();
@@ -380,7 +410,7 @@ export function RecentTransactions({
             </div>
           )}
 
-          {error && (
+          {(error || loadError) && (
             <div
               role="alert"
               className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
